@@ -9,7 +9,7 @@ class Write:
                  prefix = None):
 
         self.prefix = prefix
-        if message[-1] is ...:
+        if message and message[-1] is ...:
             self.ellipsis = True
             self.lines = (' '.join(message[:-1]) + '...').splitlines()
 
@@ -30,14 +30,14 @@ class Write:
 class JobWindow:
 
     def __init__(self,
-                 application_context,
+                 app_context,
                  job_name: str,
-                 job_id: str,
+                 job_id: int,
                  min_lines: int = 0,
                  frozen: bool = False,
                  ):
 
-        self.application_context = application_context
+        self.app_context = app_context
 
         self.min_lines = min_lines
         self.frozen = frozen
@@ -76,7 +76,7 @@ class JobWindow:
             return
 
         if self._message is None:
-            self._message = await self.application_context.channel.send("Loading...")
+            self._message = await self.app_context.interaction.original_response()
 
         await self._message.edit(content=self._build_output_string())
         self._last_update = self._version
@@ -87,8 +87,8 @@ class JobWindow:
             if prev.ellipsis and prev.prefix is None:
                 prev.prefix = '+'
 
+        self.frozen = False
         self._closed = True
-        self._frozen = False
         self._version += 1
 
     def write(self, *message, prefix=None):
@@ -106,8 +106,12 @@ class JobWindow:
             prev = self._writes[-1]
             if prev.ellipsis and prev.prefix is None:
                 prev.prefix = '-'
+            prefix = '-   '
+        else:
+            prefix = '-'
+
         if message:
-            self.write(*message, prefix='-   ')
+            self.write(*message, prefix=prefix)
         else:
             self._version += 1
 

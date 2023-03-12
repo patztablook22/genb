@@ -25,15 +25,14 @@ class Genbot(discord.Bot):
         if permissions is None:
             self.permissions = Permissions([], [])
         elif isinstance(permissions, dict):
-            self.permissions = Permissions(
-                mods=list(permissions.get('mods', [])),
-                admins=list(permissions.get('admins', []))
-            )
+            self.permissions = Permissions(**permissions)
         else:
             self.permissions = permissions
 
         if presence is None:
             self.presence = TimedPresence()
+        elif isinstance(presence, dict):
+            self.presence = TimedPresence(**presence)
         else:
             self.presence = presence
 

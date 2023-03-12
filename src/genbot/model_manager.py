@@ -2,9 +2,11 @@ from genbot.base_unit_manager import BaseUnitManager, BaseUnit, BaseUnitBuilder,
 from types import ModuleType
 from typing import Any, Callable, Optional, Awaitable
 from dataclasses import dataclass
+from genbot.JobContext import JobContext
 import discord
 import warnings
 import inspect
+import importlib
 
 @dataclass
 class ModelUnit(BaseUnit):
@@ -14,6 +16,7 @@ class ModelUnit(BaseUnit):
 class RecursiveModelUnitBuilder(RecursiveBaseUnitBuilder):
 
     def from_module(self, module, units, level):
+        importlib.reload(module)
         for objname in dir(module):
             obj = getattr(module, objname)
             if isinstance(obj, ModelUnit):
@@ -37,7 +40,6 @@ class RecursiveModelUnitBuilder(RecursiveBaseUnitBuilder):
                                 description=description,
                                 default=default,
                                 constructor=constructor)
-
     def from_payload(self, payload, units, level):
         if payload is None:
             return
@@ -96,7 +98,7 @@ class ModelManager(BaseUnitManager):
     def active_pipeline(self):
         return self._active_pipeline
 
-    async def unload(self):
+    def unload(self):
         assert self._genbot
 
         if not self.active_unit:
@@ -106,10 +108,9 @@ class ModelManager(BaseUnitManager):
         self._active_pipeline = None
         self._active_unit = None
 
-        await self._genbot.change_presence(activity=None, status=None)
         return True
 
-    async def load(self, unit: ModelUnit) -> bool:
+    def load(self, unit: ModelUnit) -> bool:
         assert self._genbot
 
         if self.active_unit:
@@ -127,11 +128,123 @@ class ModelManager(BaseUnitManager):
         self._active_unit = unit
         self._active_pipeline = pipeline
 
-        await self._genbot.change_presence(
-            activity=discord.Game(name=self._active_unit.name), 
-            status=discord.Status.online
-        )
         return True
+
+    async def load_job(self, ctx, name):
+        assert self._genbot
+
+        def worker(ctx):
+            nonlocal self, name
+            self.reload()
+
+            w = ctx.window()
+            if name not in self.units:
+                w.error('Model not found', name)
+                return
+
+            unit = self.units[name]
+            assert isinstance(unit, ModelUnit)
+
+            if self.active_unit:
+                w.write('Unloading', self.active_unit.name, ...)
+                if not self.unload():
+                    w.error()
+                    return
+
+            w.write('Loading', name, ...)
+
+            if not self.load(unit):
+                w.error()
+                return
+
+            w.write('Done.', prefix='+')
+
+            if isinstance(self._source , list) or \
+                    isinstance(self._source, dict) or \
+                    isinstance(self._source, ModuleType) or \
+                    isinstance(self._source, ModelUnit) or \
+                    isinstance(self._source, ModelManager):
+                game_name = name
+            else:
+                game_name = 'with language'
+
+            ctx.async_call(self._genbot.change_presence(
+                activity=discord.Game(name=game_name),
+                status=discord.Status.online
+            ))
+
+        await self._genbot.jobs.start(function=worker,
+                                      job_name='Load model',
+                                      app_context=ctx)
+
+    async def unload_job(self, ctx):
+        assert self._genbot
+
+        def worker(ctx):
+            nonlocal self
+
+            w = ctx.window()
+            if not self.active_unit:
+                w.error('No model loaded.')
+                return
+
+            w.write('Unloading', self.active_unit.name, ...)
+            if not self.unload():
+                w.error()
+
+            w.write('Done.', prefix='+')
+
+            ctx.async_call(self._genbot.change_presence(
+                activity=None,
+                status=None
+            ))
+
+
+        await self._genbot.jobs.start(function=worker,
+                                      job_name='Unload model',
+                                      app_context=ctx)
+
+    async def list_job(self, ctx):
+        assert self._genbot
+
+        def worker(ctx):
+            nonlocal self
+            w = ctx.window(frozen=True)
+
+            self.reload()
+
+            if not self.units:
+                w.write('No models found.')
+                return
+
+            for unit in self.units.values():
+                w.write(unit.name)
+                formatted = '\n'.join(
+                        [line.strip() for line in unit.description.splitlines()])
+                w.write(formatted, prefix='   | ')
+                w.write()
+
+        await self._genbot.jobs.start(function=worker,
+                                      job_name='List models',
+                                      app_context=ctx)
+
+    async def status_job(self, ctx):
+        assert self._genbot
+
+        def worker(ctx):
+            nonlocal self
+
+            w = ctx.window()
+            if not self.active_unit:
+                w.write('No model is currently loaded.')
+                return
+
+            w.write('Serving', self.active_unit.name)
+            w.write(self.active_unit.description, prefix='  - ')
+
+        await self._genbot.jobs.start(function=worker,
+                                      job_name='Model status',
+                                      app_context=ctx)
 
     @property
     def default_unit(self) -> Optional[ModelUnit]:
@@ -146,8 +259,7 @@ class ModelManager(BaseUnitManager):
         return default
 
     async def on_ready(self):
-        if self.default_unit:
-            await self.load(self.default_unit)
+        pass
 
     def setup(self, genbot):
         self._genbot = genbot
@@ -156,74 +268,19 @@ class ModelManager(BaseUnitManager):
 
         @group.command(description='Loads given model')
         async def load(ctx, name: str):
-            try:
-                self.reload()
-            except:
-                await ctx.respond(f'Failed to reload the module.')
-                return
-
-            if name not in self.units:
-                await ctx.respond(f'No such model: {name}')
-                return
-
-            if self.active_unit:
-                await ctx.respond(f'Unloading {self.active_unit.name}...')
-                if not await self.unload():
-                    await ctx.send_followup('Failed.')
-                await ctx.send_followup(f'Loading model {name}...')
-            else:
-                await ctx.respond(f'Loading model {name}...')
-
-            if not await self.load(self.units[name]):
-                await ctx.send_followup(f'Failed.')
-                return
-
-            await ctx.send_followup(f'Loaded.')
+            await self.load_job(ctx, name)
 
         @group.command(description='Unloads the model')
         async def unload(ctx):
-            if not self.active_unit:
-                await ctx.respond('No model is loaded.')
-                return
-
-            await ctx.respond(f'Unloading {self.active_unit.name}')
-            if not await self.unload():
-                await ctx.send_followup('Failed.')
-                return
-
-            await ctx.send_followup('Model unloaded.')
+            await self.unload_job(ctx)
 
         @group.command(description='Shows model information')
         async def status(ctx):
-            if self.active_unit:
-                embed = discord.Embed(color=discord.Color.green(),
-                                      title=f'Serving model {self.active_unit.name}',
-                                      description=self.active_unit.description)
-            else:
-                embed = discord.Embed(color=discord.Color.red(),
-                                      title='No model loaded')
-            await ctx.respond(embed=embed)
+            await self.status_job(ctx)
 
         @group.command(description='Lists available models')
         async def list(ctx):
-            self.reload()
-
-            if not self.units:
-                embed = discord.Embed(title='Available models',
-                                      description='No models have been found.')
-                await ctx.respond(embed=embed)
-                return
-
-            embed = discord.Embed(title='Available models')
-
-            for unit in self.units.values():
-                embed.add_field(
-                    name=unit.name + \
-                        (' (default)' if unit == self.default_unit else ''),
-                    value=unit.description
-                )
-
-            await ctx.respond(embed=embed)
+            await self.list_job(ctx)
 
         @group.error
         async def on_error(ctx, error):

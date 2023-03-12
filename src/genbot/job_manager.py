@@ -8,6 +8,7 @@ import inspect
 from genbot.JobContext import JobContext
 import threading
 import asyncio
+import importlib
 
 @dataclass
 class JobUnit(BaseUnit):
@@ -16,6 +17,7 @@ class JobUnit(BaseUnit):
 class RecursiveJobUnitBuilder(RecursiveBaseUnitBuilder):
 
     def from_module(self, module, units, level):
+        importlib.reload(module)
         for objname in dir(module):
             obj = getattr(module, objname)
             if isinstance(obj, JobUnit):
@@ -66,28 +68,70 @@ class JobManager(BaseUnitManager):
     def __init__(self, jobs: Any):
         super().__init__(source=jobs,
                          builder=RecursiveJobUnitBuilder())
+        self.active_jobs = []
+        self.id_counter = 0
 
-    async def start(self, unit: JobUnit, 
-                    job_id: str, 
-                    application_context: discord.ApplicationContext):
+    async def start(self, 
+                    function: Callable,
+                    job_name: str,
+                    app_context: discord.ApplicationContext):
 
-        ctx = JobContext(job_name=unit.name,
+        job_id = self.id_counter
+        self.id_counter += 1
+        ctx = JobContext(job_name=job_name,
                          job_id=job_id,
-                         application_context=application_context)
+                         app_context=app_context)
 
         await ctx._setup()
 
         def worker():
-            nonlocal unit, ctx
-            unit.function(ctx)
+            nonlocal function, ctx
+            function(ctx)
             ctx._close()
 
         thread = threading.Thread(target=worker)
         thread.start()
         await ctx._update_loop()
 
+    async def list_job(self, ctx):
+        assert self._genbot
+
+        def worker(ctx):
+            nonlocal self
+            w = ctx.window(frozen=True)
+
+            if not self.units:
+                w.write('No plugged jobs found.')
+                return
+
+            self.reload()
+            for unit in self.units.values():
+                w.write(unit.name)
+                formatted = '\n'.join(
+                        [line.strip() for line in unit.description.splitlines()])
+                w.write(formatted, prefix='   | ')
+                w.write()
+
+        await self._genbot.jobs.start(function=worker,
+                                      job_name='List plugged jobs',
+                                      app_context=ctx)
+
+    async def status_job(self, ctx):
+        assert self._genbot
+
+        def worker(ctx):
+            nonlocal self
+
+            w = ctx.window()
+            w.write('jbos idk')
+
+        await self._genbot.jobs.start(function=worker,
+                                      job_name='Job status',
+                                      app_context=ctx)
+
     def setup(self, genbot):
-        group = genbot.create_group('job', 'Controls available jobs')
+        self._genbot = genbot
+        group = genbot.create_group('job', 'Controls jobs')
 
         @group.command(description='Starts a new job')
         async def start(ctx, name: str, id: Optional[str] = None):
@@ -97,9 +141,9 @@ class JobManager(BaseUnitManager):
 
             unit = self.units[name]
             assert isinstance(unit, JobUnit)
-            await self.start(unit=unit,
-                             job_id=id,
-                             application_context=ctx)
+            await self.start(function=unit.function,
+                             job_name=unit.name,
+                             app_context=ctx)
 
         @group.command(description='Stops a job')
         async def stop(ctx, id: str):
@@ -111,7 +155,7 @@ class JobManager(BaseUnitManager):
 
         @group.command(description='Shows job status')
         async def status(ctx, id: Optional[str]):
-            return
+            await self.status_job(ctx)
 
         @group.command(description='Reloads jobs')
         async def reload(ctx, id: Optional[str]):
@@ -124,20 +168,7 @@ class JobManager(BaseUnitManager):
 
         @group.command(description='Lists available jobs')
         async def list(ctx):
-            self.reload()
-
-            if not self.units:
-                embed = discord.Embed(title='Available jobs',
-                                      description='No jobs available.')
-                await ctx.respond(embed=embed)
-                return
-
-            embed = discord.Embed(title='Available jobs')
-
-            for unit in self.units.values():
-                embed.add_field(name=unit.name, value=unit.description)
-
-            await ctx.respond(embed=embed)
+            await self.list_job(ctx)
 
         @group.error
         async def on_error(ctx, error):

@@ -66,14 +66,6 @@ class BaseUnitManager:
         return self._units
 
     def reload(self):
-        def reload_recursive(arr):
-            for elem in arr:
-                if inspect.ismodule(elem):
-                    importlib.reload(elem)
-                elif isinstance(elem, list):
-                    reload_recursive(elem)
-
-        reload_recursive([self._source])
         self.build()
 
     def build(self):
