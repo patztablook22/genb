@@ -2,7 +2,7 @@
 
 Generative language modelling bot for Discord.
 
-# Installation
+## Installation
 
 Run
 
