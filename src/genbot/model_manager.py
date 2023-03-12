@@ -151,6 +151,11 @@ class ModelManager(BaseUnitManager):
                     w.error()
                     return
 
+            ctx.async_call(self._genbot.change_presence(
+                activity=None,
+                status=None
+            ))
+
             w.write('Loading', name, ...)
 
             if not self.load(unit):
