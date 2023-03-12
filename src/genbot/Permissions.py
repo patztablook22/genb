@@ -2,8 +2,8 @@ import discord
 
 class Permissions:
     def __init__(self,
-                 mods = list[int],
-                 admins = list[int]):
+                 mods: list[int] = [],
+                 admins: list[int] = []):
 
         self.mods = set(mods)
         self.admins = set(admins)
