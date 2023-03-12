@@ -1,0 +1,17 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+
+[project]
+name = "genbot"
+version = "0.0.1"
+description = "A generative language modelling helper bot for Discord."
+authors = [
+    { name = "patztablook22", email = "patrik.zavoral@gmail.com" },
+]
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+    "discord.py >= 2.0"
+]
