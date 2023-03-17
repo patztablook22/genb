@@ -1,4 +1,6 @@
 from dataclasses import dataclass
+import discord
+from typing import Optional
 
 BLANK = '‏‏‎ ‎'
 PROMPT = '➜'
@@ -30,7 +32,7 @@ class Write:
 class JobWindow:
 
     def __init__(self,
-                 app_context,
+                 app_context: Optional[discord.ApplicationContext],
                  job_name: str,
                  job_id: int,
                  min_lines: int = 0,
@@ -75,11 +77,12 @@ class JobWindow:
         if self._version == self._last_update or self.frozen:
             return
 
-        if self._message is None:
-            self._message = await self.app_context.interaction.original_response()
+        if self.app_context:
+            if self._message is None:
+                self._message = await self.app_context.interaction.original_response()
 
-        await self._message.edit(content=self._build_output_string())
-        self._last_update = self._version
+            await self._message.edit(content=self._build_output_string())
+            self._last_update = self._version
 
     def close(self):
         if self._writes:

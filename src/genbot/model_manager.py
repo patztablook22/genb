@@ -83,8 +83,10 @@ class ModelManager(BaseUnitManager):
         self._genbot = None
 
     async def __call__(self, message: discord.Message):
+        a = message.channel
+        assert self._genbot
         if self.active_pipeline:
-            output = self.active_pipeline(message)
+            output = self.active_pipeline(message.channel, self._genbot)
             if output is not None and inspect.isawaitable(output):
                 output = await output
             if output is not None:
@@ -102,33 +104,25 @@ class ModelManager(BaseUnitManager):
         assert self._genbot
 
         if not self.active_unit:
-            return False
+            raise RuntimeError("No module is currently loaded.")
 
         del self._active_pipeline
         self._active_pipeline = None
         self._active_unit = None
 
-        return True
-
-    def load(self, unit: ModelUnit) -> bool:
+    def load(self, unit: ModelUnit):
         assert self._genbot
 
         if self.active_unit:
-            if not self.unload():
-                return False
+            self.unload()
 
-        try:
-            pipeline = unit.constructor()
-        except:
-            return False
+        pipeline = unit.constructor()
 
         if not pipeline:
-            return False
+            raise ValueError("Constructed pipeline is None.")
 
         self._active_unit = unit
         self._active_pipeline = pipeline
-
-        return True
 
     async def load_job(self, ctx, name):
         assert self._genbot
@@ -139,44 +133,44 @@ class ModelManager(BaseUnitManager):
 
             w = ctx.window()
             if name not in self.units:
-                w.error('Model not found', name)
+                w.error('Model not found:', name)
                 return
 
             unit = self.units[name]
             assert isinstance(unit, ModelUnit)
 
-            if self.active_unit:
-                w.write('Unloading', self.active_unit.name, ...)
-                if not self.unload():
-                    w.error()
-                    return
+            try:
+                if self.active_unit:
+                    w.write('Unloading', self.active_unit.name, ...)
+                    self.unload()
 
-            ctx.async_call(self._genbot.change_presence(
-                activity=None,
-                status=None
-            ))
+                ctx.async_call(self._genbot.change_presence(
+                    activity=None,
+                    status=None
+                ))
 
-            w.write('Loading', name, ...)
+                w.write('Loading', name, ...)
 
-            if not self.load(unit):
-                w.error()
-                return
+                self.load(unit)
 
-            w.write('Done.', prefix='+')
+                w.write('Done.', prefix='+')
 
-            if isinstance(self._source , list) or \
-                    isinstance(self._source, dict) or \
-                    isinstance(self._source, ModuleType) or \
-                    isinstance(self._source, ModelUnit) or \
-                    isinstance(self._source, ModelManager):
-                game_name = name
-            else:
-                game_name = 'with language'
+                if isinstance(self._source , list) or \
+                        isinstance(self._source, dict) or \
+                        isinstance(self._source, ModuleType) or \
+                        isinstance(self._source, ModelUnit) or \
+                        isinstance(self._source, ModelManager):
+                    game_name = name
+                else:
+                    game_name = 'with language'
 
-            ctx.async_call(self._genbot.change_presence(
-                activity=discord.Game(name=game_name),
-                status=discord.Status.online
-            ))
+                ctx.async_call(self._genbot.change_presence(
+                    activity=discord.Game(name=game_name),
+                    status=discord.Status.online
+                ))
+
+            except Exception as e:
+                w.error(str(e))
 
         await self._genbot.jobs.start(function=worker,
                                       job_name='Load model',
@@ -194,15 +188,18 @@ class ModelManager(BaseUnitManager):
                 return
 
             w.write('Unloading', self.active_unit.name, ...)
-            if not self.unload():
-                w.error()
 
-            w.write('Done.', prefix='+')
+            try:
+                self.unload()
 
-            ctx.async_call(self._genbot.change_presence(
-                activity=None,
-                status=None
-            ))
+                w.write('Done.', prefix='+')
+
+                ctx.async_call(self._genbot.change_presence(
+                    activity=None,
+                    status=None
+                ))
+            except Exception as e:
+                w.error(str(e))
 
 
         await self._genbot.jobs.start(function=worker,
@@ -264,7 +261,10 @@ class ModelManager(BaseUnitManager):
         return default
 
     async def on_ready(self):
-        pass
+        if not self.default_unit:
+            return
+
+        await self.load_job(None, self.default_unit.name)
 
     def setup(self, genbot):
         self._genbot = genbot
@@ -274,6 +274,13 @@ class ModelManager(BaseUnitManager):
         @group.command(description='Loads given model')
         async def load(ctx, name: str):
             await self.load_job(ctx, name)
+
+        @group.command(description='Reloads current model')
+        async def reload(ctx):
+            if not self.active_unit:
+                await ctx.respond("No model is currently loaded.")
+                return
+            await self.load_job(ctx, self.active_unit.name)
 
         @group.command(description='Unloads the model')
         async def unload(ctx):

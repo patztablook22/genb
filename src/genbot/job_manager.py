@@ -74,7 +74,7 @@ class JobManager(BaseUnitManager):
     async def start(self, 
                     function: Callable,
                     job_name: str,
-                    app_context: discord.ApplicationContext):
+                    app_context: Optional[discord.ApplicationContext]):
 
         job_id = self.id_counter
         self.id_counter += 1

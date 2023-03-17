@@ -4,3 +4,4 @@ from genbot.TimedPresence import TimedPresence
 from genbot.model_manager import ModelManager, ModelUnit
 from genbot.model import model
 from genbot.job import job
+from genbot.BatchedModel import BatchedModel

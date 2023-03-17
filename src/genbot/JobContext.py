@@ -2,11 +2,16 @@ import discord
 import asyncio
 from queue import Queue
 from genbot.JobWindow import JobWindow
+from typing import Optional
 
 
 class JobContext:
 
-    def __init__(self, job_name: str, job_id: int, app_context: discord.ApplicationContext):
+    def __init__(self,
+                 job_name: str, 
+                 job_id: int, 
+                 app_context: Optional[discord.ApplicationContext]):
+
         self.app_context = app_context
         self.job_name = job_name
         self.job_id = job_id
@@ -15,7 +20,8 @@ class JobContext:
         self._await_queue = Queue()
 
     async def _setup(self):
-        await self.app_context.respond('Starting new job...')
+        if self.app_context:
+            await self.app_context.respond('Starting new job...')
 
     async def _update(self):
         while not self._await_queue.empty():
