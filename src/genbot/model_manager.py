@@ -86,7 +86,7 @@ class ModelManager(BaseUnitManager):
         a = message.channel
         assert self._genbot
         if self.active_pipeline:
-            output = self.active_pipeline(message.channel, self._genbot)
+            output = self.active_pipeline(message.channel, self._genbot.user)
             if output is not None and inspect.isawaitable(output):
                 output = await output
             if output is not None:
