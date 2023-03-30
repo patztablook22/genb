@@ -49,11 +49,7 @@ class PromptPipeline:
         raise NotImplementedError
 
     def __del__(self):
-        try:
-            self._worker_thread
-        except:
-            return
-
+        self._loop = False
         while self._worker_thread.is_alive():
             self._worker_thread.join(5)
 
