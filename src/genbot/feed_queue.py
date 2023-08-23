@@ -8,13 +8,14 @@ class ResponseHandler:
         self._conn = conn
 
     def get_data(self):
-        self._conn.send(('get_data', ))
+        self._conn.send(('get_data',))
         return self._conn.recv()
 
     def write(self, data):
         self._conn.send(('write', data))
 
     def close(self):
+        self._conn.send(('close',))
         self._conn.close()
 
 class FeedQueue:
@@ -40,9 +41,8 @@ class FeedQueue:
 
         try:
             while True:
-                if not conn1.poll():
-                    await asyncio.sleep(0.5)
-                    continue
+                if conn1.closed: break
+                if not conn1.poll(timeout=0.5): continue
 
                 req = conn1.recv()
                 func = req[0]
@@ -54,10 +54,12 @@ class FeedQueue:
                     conn1.send(data)
                 elif func == 'write':
                     yield req[1]
+                elif func == 'close':
+                    conn1.close()
+                    break
                 else:
                     raise RuntimeError
 
         except EOFError:
             pass
-        print('done')
 

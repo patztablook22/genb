@@ -3,6 +3,7 @@ from discord.ext import commands
 from typing import Optional
 from genbot.feed_queue import FeedQueue
 from multiprocessing import Process
+import asyncio
 
 class Genbot(discord.Bot):
     def __init__(self, 
@@ -11,7 +12,7 @@ class Genbot(discord.Bot):
 
         super().__init__(intents=intents)
         self._feed_queue = FeedQueue()
-        self._processes = None
+        self._processes = []
 
 
     def worker(self):
@@ -36,3 +37,17 @@ class Genbot(discord.Bot):
             self._processes.append(p)
 
         super().run(*args, **kwargs)
+
+    async def close(self):
+        for p in self._processes:
+            p.terminate()
+
+        await asyncio.sleep(3)
+
+        for p in self._processes:
+            if p.is_alive():
+                p.kill()
+
+        self._processes = []
+
+        await super().close()
