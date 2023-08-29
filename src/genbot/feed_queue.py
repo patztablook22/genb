@@ -35,14 +35,13 @@ class FeedQueue:
 
     async def enqueue(self, data_callback):
         conn1, conn2 = Pipe()
-
-
         self._queue.put(ResponseHandler(conn2))
 
         try:
             while True:
                 if conn1.closed: break
-                if not conn1.poll(timeout=0.5): continue
+                await asyncio.sleep(0.5)
+                if not conn1.poll(): continue
 
                 req = conn1.recv()
                 func = req[0]
