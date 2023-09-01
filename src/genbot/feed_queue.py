@@ -3,6 +3,55 @@ from queue import Empty
 import asyncio
 import inspect
 
+class TurnHandler:
+    def __init__(self, conn, ):
+        self.closed = False
+        self._conn = conn
+        self._buff = None
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        req = await self._read()
+        if self.closed: raise StopAsyncIteration
+        return req[1]
+
+    async def _peek(self):
+        if self._buff is None:
+            self._buff = await self._read()
+        return self._buff
+
+    async def _read(self):
+        if self._buff is not None:
+            buff = self._buff
+            self._buff = None
+            return buff
+
+        try:
+            while True:
+                if self._conn.closed: return
+                await asyncio.sleep(0.1)
+                if self._conn.poll(): break
+
+            data = self._conn.recv()
+            if data[0] == 'close':
+                self._conn.close()
+                self.closed = True
+                return None
+
+            return data
+        except EOFError:
+            self.closed = True
+            return None
+
+    async def _send(self, data):
+        try:
+            self._conn.send(data)
+        except EOFError:
+            return
+
+
 class ResponseHandler:
     def __init__(self, conn):
         self._conn = conn
@@ -13,6 +62,9 @@ class ResponseHandler:
 
     def write(self, data):
         self._conn.send(('write', data))
+
+    def wait(self):
+        self._conn.send(('wait',))
 
     def close(self):
         self._conn.send(('close',))
@@ -35,30 +87,19 @@ class FeedQueue:
 
     async def enqueue(self, data_callback):
         conn1, conn2 = Pipe()
+        turn = TurnHandler(conn1)
+
         self._queue.put(ResponseHandler(conn2))
+        req = await turn._peek()
+        if req[0] == 'get_data':
+            await turn._read()
+            data = data_callback()
+            if data is not None and inspect.isawaitable(data):
+                data = await data
+            await turn._send(data)
 
-        try:
-            while True:
-                if conn1.closed: break
-                await asyncio.sleep(0.5)
-                if not conn1.poll(): continue
-
-                req = conn1.recv()
-                func = req[0]
-                if func == 'get_data':
-                    data = data_callback()
-                    if data is not None and inspect.isawaitable(data):
-                        data = await data
-
-                    conn1.send(data)
-                elif func == 'write':
-                    yield req[1]
-                elif func == 'close':
-                    conn1.close()
-                    break
-                else:
-                    raise RuntimeError
-
-        except EOFError:
-            pass
+        p = await turn._peek()
+        if p is not None and p[0] == 'wait':
+            await turn._read()
+        return turn
 

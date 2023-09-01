@@ -23,8 +23,7 @@ class Genbot(discord.Bot):
                                         max_size=max_size)
 
     async def enqueue(self, data_callback):
-        async for response in self._feed_queue.enqueue(data_callback):
-            yield response
+        return await self._feed_queue.enqueue(data_callback)
 
     async def on_message(self, message: discord.Message):
         pass
