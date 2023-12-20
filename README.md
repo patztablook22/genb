@@ -1,4 +1,4 @@
-# GenBot
+# Genbot
 
 Generative language modelling bot for Discord.
 
