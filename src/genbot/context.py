@@ -73,5 +73,7 @@ class Context:
                                .filter(self.is_relevant)
         async for m in history:
             if self.is_reset(m): return True
-            if len(self._cache) == 0 or m.id != self._cache[0].id: return False
-            return True
+            if len(self._cache) != 0 and m.id == self._cache[0].id: return True
+            if m.author == self._genbot.user: continue
+            if len(self._cache) == 0: return False
+            return False

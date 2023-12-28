@@ -39,13 +39,6 @@ class Genbot(discord.Bot):
         async def ping(ctx):
             await ctx.respond("Pong.", ephemeral=True)
 
-        @self.slash_command(description="Restarts the bot.")
-        async def restart(ctx):
-            if ctx.author.id not in self.admins: raise PermissionError()
-            await ctx.respond("Restarting...", ephemeral=True)
-            #self.restart = True
-            await self.close()
-
         @self.slash_command(description="Creates a new chatbot thread.")
         async def thread(ctx, name: str):
             if not self.can_chat(ctx.author, ctx.channel):
@@ -56,16 +49,14 @@ class Genbot(discord.Bot):
             try:
                 await msg.create_thread(name=name)
             except Exception as e:
-                #await interaction.delete()
+                await interaction.delete_original_response()
                 raise CommandError("Could not create a thread here.")
 
-        @self.slash_command()
+        @self.slash_command(description="Resets the context window.")
         async def reset(ctx):
-            if not ctx.author.id not in self.admins: raise PermissionError()
+            if not self.can_chat(ctx.author, ctx.channel): raise PermissionError()
+            if not self.is_active(ctx.channel): raise CommandError("This is not an active channel.")
             await ctx.respond("Done.")
-
-        permissions = self.create_group(name='permissions')
-
 
     def set(self, **kwargs):
         if 'admins' in kwargs:
@@ -78,7 +69,8 @@ class Genbot(discord.Bot):
     def is_active(self, channel: MessageableChannel):
         if isinstance(channel, (discord.Thread,
                                 discord.DMChannel,
-                                discord.GroupChannel)):
+                                discord.GroupChannel,
+                                discord.PartialMessageable)):
             return True
         return False
 
@@ -94,6 +86,7 @@ class Genbot(discord.Bot):
 
     def is_visible(self, message: discord.Message):
         assert message.author and message.channel
+        if message.author == self.user and not self.is_control(message): return True
         return self.can_chat(message.author, message.channel) and not self.has_ignore_flag(message)
 
     def is_control(self, message: discord.Message):
@@ -120,6 +113,7 @@ class Genbot(discord.Bot):
         pass
 
     async def on_message(self, message: discord.Message):
+        if message.author == self.user: return
         if not self.is_active(message.channel) or not self.is_visible(message): return
         await self.attend(message.channel)
 
