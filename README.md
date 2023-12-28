@@ -1,6 +1,6 @@
 # Genbot
 
-Generative LM deployment to Discord.
+Generative LM deployment for Discord.
  
 ## Installation
 
