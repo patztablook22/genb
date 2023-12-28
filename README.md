@@ -11,7 +11,7 @@ pip install git+https://github.com/patztablook22/genbot
 
 Alternatively, specify the package in `requirements.txt` simply as:
 ```txt
-git+https://github.com/patztablook22/shellbot
+git+https://github.com/patztablook22/genbot
 ```
 
 ## Documentation
